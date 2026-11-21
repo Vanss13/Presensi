@@ -19,3 +19,9 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+
+# Keep Firestore data classes & @Keep annotations if minifyEnabled is turned on
+-keepattributes Signature,InnerClasses,EnclosingMethod,*Annotation*
+-keep @androidx.annotation.Keep class * { *; }
+-keep class com.example.data.model.** { *; }
+
