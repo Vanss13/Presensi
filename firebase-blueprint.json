@@ -1,0 +1,309 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Authenticated HADIRIN platform user profile.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "phone": { "type": "string" },
+        "activeOrganizationId": { "type": "string" },
+        "superAdmin": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "FieldValue.serverTimestamp()" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "FieldValue.serverTimestamp()" }
+      },
+      "required": ["userId", "email", "displayName", "superAdmin", "createdAt", "updatedAt"]
+    },
+    "OrgJoinCode": {
+      "title": "OrgJoinCode",
+      "description": "Direct lookup document mapping an organization join code to its organization metadata.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "organizationType": { "type": "string", "enum": ["EDU", "WORK"] },
+        "ownerUid": { "type": "string" },
+        "memberLimit": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "organizationName", "organizationType", "ownerUid", "memberLimit", "createdAt", "updatedAt"]
+    },
+    "UserMembership": {
+      "title": "UserMembership",
+      "description": "Per-user organization membership index for tenant switching.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "organizationId": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "organizationType": { "type": "string", "enum": ["EDU", "WORK"] },
+        "role": { "type": "string", "enum": ["ORG_ADMIN", "SUPERVISOR", "MEMBER", "PARENT"] },
+        "memberCode": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "organizationId", "organizationName", "organizationType", "role", "memberCode", "createdAt", "updatedAt"]
+    },
+    "Organization": {
+      "title": "Organization",
+      "description": "Multi-tenant organization root for HADIRIN EDU or HADIRIN WORK.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "type": { "type": "string", "enum": ["EDU", "WORK"] },
+        "joinCode": { "type": "string" },
+        "address": { "type": "string" },
+        "phone": { "type": "string" },
+        "ownerUid": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "subscriptionPlanId": { "type": "string", "enum": ["FREE", "STARTER", "BUSINESS", "PROFESSIONAL", "ENTERPRISE"] },
+        "subscriptionStatus": { "type": "string", "enum": ["TRIAL", "ACTIVE", "EXPIRED"] },
+        "memberLimit": { "type": "integer" },
+        "trialEndsAtMillis": { "type": "integer" },
+        "requireGeofence": { "type": "boolean" },
+        "requireDynamicQr": { "type": "boolean" },
+        "requireSelfie": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "name", "type", "joinCode", "address", "phone", "ownerUid", "staffUids",
+        "subscriptionPlanId", "subscriptionStatus", "memberLimit", "trialEndsAtMillis",
+        "requireGeofence", "requireDynamicQr", "requireSelfie", "createdAt", "updatedAt"
+      ]
+    },
+    "WorkspaceConfig": {
+      "title": "WorkspaceConfig",
+      "description": "Tenant configuration storing classes/departments, schedules/shifts, geofence locations, and active QR session.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "units": { "type": "array" },
+        "schedules": { "type": "array" },
+        "locations": { "type": "array" },
+        "activeQrToken": { "type": "string" },
+        "qrExpiresAtMillis": { "type": "integer" },
+        "qrLocationName": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "units", "schedules", "locations", "activeQrToken", "qrExpiresAtMillis", "qrLocationName", "updatedAt"]
+    },
+    "OrgMember": {
+      "title": "OrgMember",
+      "description": "Organization member record with RBAC role, EDU/WORK unit assignment, and parent link.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "parentUid": { "type": "string" },
+        "fullName": { "type": "string" },
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "memberCode": { "type": "string" },
+        "role": { "type": "string", "enum": ["ORG_ADMIN", "SUPERVISOR", "MEMBER", "PARENT"] },
+        "subType": { "type": "string", "enum": ["STUDENT", "TEACHER", "EMPLOYEE", "PARENT"] },
+        "unitId": { "type": "string" },
+        "unitName": { "type": "string" },
+        "division": { "type": "string" },
+        "scheduleId": { "type": "string" },
+        "scheduleName": { "type": "string" },
+        "joinCodeUsed": { "type": "string" },
+        "status": { "type": "string", "enum": ["ACTIVE", "INACTIVE"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "userId", "staffUids", "fullName", "memberCode", "role", "subType", "status", "createdAt", "updatedAt"]
+    },
+    "AttendanceRecord": {
+      "title": "AttendanceRecord",
+      "description": "Daily member attendance check-in/check-out record with GPS, QR, and Selfie verification.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "parentUid": { "type": "string" },
+        "memberName": { "type": "string" },
+        "memberCode": { "type": "string" },
+        "unitName": { "type": "string" },
+        "dateKey": { "type": "string" },
+        "checkInTimeText": { "type": "string" },
+        "checkOutTimeText": { "type": "string" },
+        "checkInAt": { "type": "string", "format": "date-time" },
+        "checkOutAt": { "type": "string", "format": "date-time" },
+        "method": { "type": "string", "enum": ["GPS", "QR", "SELFIE"] },
+        "checkOutMethod": { "type": "string" },
+        "latitude": { "type": "number" },
+        "longitude": { "type": "number" },
+        "distanceMeters": { "type": "integer" },
+        "withinGeofence": { "type": "boolean" },
+        "qrTokenUsed": { "type": "string" },
+        "selfiePath": { "type": "string" },
+        "faceConsentGranted": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["HADIR", "TERLAMBAT", "IZIN", "SAKIT", "ALPHA"] },
+        "lateMinutes": { "type": "integer" },
+        "workMinutes": { "type": "integer" },
+        "overtimeMinutes": { "type": "integer" },
+        "deviceInfo": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "organizationId", "userId", "staffUids", "memberName", "memberCode", "dateKey",
+        "checkInTimeText", "checkInAt", "method", "distanceMeters", "withinGeofence",
+        "faceConsentGranted", "status", "lateMinutes", "workMinutes", "overtimeMinutes",
+        "deviceInfo", "createdAt", "updatedAt"
+      ]
+    },
+    "LeaveOvertimeRequest": {
+      "title": "LeaveOvertimeRequest",
+      "description": "Leave, sick, permission, overtime, or attendance correction request.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "userId": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "memberName": { "type": "string" },
+        "unitName": { "type": "string" },
+        "type": { "type": "string", "enum": ["CUTI", "SAKIT", "IZIN", "LEMBUR", "KOREKSI"] },
+        "startDate": { "type": "string" },
+        "endDate": { "type": "string" },
+        "durationHours": { "type": "integer" },
+        "reason": { "type": "string" },
+        "approvalStatus": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "reviewedByUid": { "type": "string" },
+        "reviewedByName": { "type": "string" },
+        "reviewNote": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "organizationId", "userId", "staffUids", "memberName", "type",
+        "startDate", "endDate", "durationHours", "reason", "approvalStatus",
+        "createdAt", "updatedAt"
+      ]
+    },
+    "AppNotification": {
+      "title": "AppNotification",
+      "description": "In-app notification for attendance, lateness, parent alerts, and approvals.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "targetUid": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "category": { "type": "string", "enum": ["ATTENDANCE", "LATE", "LEAVE", "PARENT", "SYSTEM"] },
+        "readFlag": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "targetUid", "staffUids", "title", "message", "category", "readFlag", "createdAt"]
+    },
+    "AuditLog": {
+      "title": "AuditLog",
+      "description": "Immutable security and operational audit trail per organization.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "actorUid": { "type": "string" },
+        "actorName": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "action": { "type": "string" },
+        "details": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["organizationId", "actorUid", "actorName", "staffUids", "action", "details", "createdAt"]
+    },
+    "SubscriptionPlan": {
+      "title": "SubscriptionPlan",
+      "description": "SaaS subscription pricing and quota plan.",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "monthlyPriceIdr": { "type": "integer" },
+        "maxUsers": { "type": "integer" },
+        "features": { "type": "array" },
+        "tierOrder": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "monthlyPriceIdr", "maxUsers", "features", "tierOrder", "updatedAt"]
+    },
+    "BillingTransaction": {
+      "title": "BillingTransaction",
+      "description": "Subscription payment transaction and invoice record.",
+      "type": "object",
+      "properties": {
+        "organizationId": { "type": "string" },
+        "organizationName": { "type": "string" },
+        "userId": { "type": "string" },
+        "staffUids": { "type": "array" },
+        "planId": { "type": "string" },
+        "planName": { "type": "string" },
+        "amountIdr": { "type": "integer" },
+        "status": { "type": "string", "enum": ["PAID", "PENDING", "FAILED"] },
+        "invoiceNumber": { "type": "string" },
+        "paymentMethod": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "organizationId", "organizationName", "userId", "staffUids",
+        "planId", "planName", "amountIdr", "status", "invoiceNumber", "paymentMethod", "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "Authenticated user profiles."
+    },
+    "/org_join_codes/{joinCode}": {
+      "schema": { "$ref": "#/entities/OrgJoinCode" },
+      "description": "Join code lookup index for joining organizations."
+    },
+    "/user_memberships/{membershipId}": {
+      "schema": { "$ref": "#/entities/UserMembership" },
+      "description": "User's joined organizations index."
+    },
+    "/organizations/{orgId}": {
+      "schema": { "$ref": "#/entities/Organization" },
+      "description": "Multi-tenant organization root."
+    },
+    "/organizations/{orgId}/workspace/{docId}": {
+      "schema": { "$ref": "#/entities/WorkspaceConfig" },
+      "description": "Organization units, schedules, geofence locations, and dynamic QR config."
+    },
+    "/organizations/{orgId}/members/{memberId}": {
+      "schema": { "$ref": "#/entities/OrgMember" },
+      "description": "Organization members with RBAC roles and parent links."
+    },
+    "/organizations/{orgId}/attendances/{attendanceId}": {
+      "schema": { "$ref": "#/entities/AttendanceRecord" },
+      "description": "Attendance check-in/out records."
+    },
+    "/organizations/{orgId}/requests/{requestId}": {
+      "schema": { "$ref": "#/entities/LeaveOvertimeRequest" },
+      "description": "Leave, sick, permission, overtime, and correction requests."
+    },
+    "/organizations/{orgId}/notifications/{notificationId}": {
+      "schema": { "$ref": "#/entities/AppNotification" },
+      "description": "Role-targeted notifications."
+    },
+    "/organizations/{orgId}/audit_logs/{logId}": {
+      "schema": { "$ref": "#/entities/AuditLog" },
+      "description": "Immutable organization audit trail."
+    },
+    "/subscription_plans/{planId}": {
+      "schema": { "$ref": "#/entities/SubscriptionPlan" },
+      "description": "SaaS subscription plans."
+    },
+    "/transactions/{transactionId}": {
+      "schema": { "$ref": "#/entities/BillingTransaction" },
+      "description": "Subscription billing transactions and invoices."
+    }
+  }
+}

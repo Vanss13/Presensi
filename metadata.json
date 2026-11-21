@@ -1,0 +1,6 @@
+{
+  "name": "HADIRIN",
+  "description": "Smart Attendance & Workforce Management SaaS platform for HADIRIN EDU and HADIRIN WORK.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

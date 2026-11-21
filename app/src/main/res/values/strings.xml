@@ -1,0 +1,21 @@
+<resources>
+    <string name="app_name">HADIRIN</string>
+    <string name="brand_tagline">Smart Attendance &amp; Workforce Management</string>
+    <string name="sign_in_google">Masuk dengan Google</string>
+    <string name="sign_out">Keluar Akun</string>
+    <string name="error_sign_in_cancelled">Masuk dengan Google dibatalkan. Silakan pilih akun Google untuk melanjutkan.</string>
+    <string name="error_missing_client_id">Konfigurasi Google Sign-In belum lengkap (default_web_client_id tidak ditemukan).</string>
+    <string name="error_generic_load">Gagal memuat data. Periksa koneksi internet Anda dan coba lagi.</string>
+    <string name="action_check_in">PRESENSI MASUK</string>
+    <string name="action_check_out">PRESENSI PULANG</string>
+    <string name="nav_home">Beranda</string>
+    <string name="nav_attendance">Presensi</string>
+    <string name="nav_history">Riwayat</string>
+    <string name="nav_leave">Izin/Cuti</string>
+    <string name="nav_profile">Profil</string>
+    <string name="nav_dashboard">Dashboard</string>
+    <string name="nav_manage">Kelola</string>
+    <string name="nav_reports">Laporan</string>
+    <string name="nav_parent_monitor">Anak</string>
+    <string name="nav_super_admin">Platform</string>
+</resources>

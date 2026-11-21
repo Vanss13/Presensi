@@ -1,0 +1,533 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Global safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- GLOBAL PRIMITIVES ---
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isBootstrappedSuperAdmin() {
+      return isSignedIn() &&
+             ('email_verified' in request.auth.token) &&
+             request.auth.token.email_verified == true &&
+             ('email' in request.auth.token) &&
+             request.auth.token.email == 'halimawan13@gmail.com';
+    }
+
+    function isBoundedStringList(arr, minLen, maxLen) {
+      return arr is list &&
+             arr.size() >= minLen &&
+             arr.size() <= maxLen &&
+             (arr.size() == 0 || arr[0] is string);
+    }
+
+    function isOrgMember(orgId) {
+      return isSignedIn() &&
+             exists(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid));
+    }
+
+    function orgMemberRole(orgId) {
+      return get(/databases/$(database)/documents/organizations/$(orgId)/members/$(request.auth.uid)).data.role;
+    }
+
+    function isOrgAdmin(orgId) {
+      return isOrgMember(orgId) && orgMemberRole(orgId) == 'ORG_ADMIN';
+    }
+
+    function isOrgStaff(orgId) {
+      return isOrgMember(orgId) && (orgMemberRole(orgId) in ['ORG_ADMIN', 'SUPERVISOR']);
+    }
+
+    // --- VALIDATION HELPERS ---
+    function isValidUserProfile(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             data.displayName is string && data.displayName.size() >= 1 && data.displayName.size() <= 100 &&
+             data.superAdmin is bool &&
+             (!('photoUrl' in data) || (data.photoUrl is string && data.photoUrl.size() <= 500)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             (!('activeOrganizationId' in data) || (data.activeOrganizationId is string && data.activeOrganizationId.size() <= 128)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrgJoinCode(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.organizationName is string && data.organizationName.size() >= 2 && data.organizationName.size() <= 120 &&
+             data.organizationType in ['EDU', 'WORK'] &&
+             data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             data.memberLimit is int && data.memberLimit >= 1 && data.memberLimit <= 100000 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidUserMembership(data) {
+      return data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             data.organizationId is string && isValidId(data.organizationId) &&
+             data.organizationName is string && data.organizationName.size() >= 2 && data.organizationName.size() <= 120 &&
+             data.organizationType in ['EDU', 'WORK'] &&
+             data.role in ['ORG_ADMIN', 'SUPERVISOR', 'MEMBER', 'PARENT'] &&
+             data.memberCode is string && data.memberCode.size() >= 1 && data.memberCode.size() <= 40 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrganization(data) {
+      return data.name is string && data.name.size() >= 2 && data.name.size() <= 120 &&
+             data.type in ['EDU', 'WORK'] &&
+             data.joinCode is string && data.joinCode.size() >= 4 && data.joinCode.size() <= 24 &&
+             data.address is string && data.address.size() >= 1 && data.address.size() <= 300 &&
+             data.phone is string && data.phone.size() >= 4 && data.phone.size() <= 30 &&
+             data.ownerUid is string && data.ownerUid.size() >= 1 && data.ownerUid.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             data.subscriptionPlanId in ['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'] &&
+             data.subscriptionStatus in ['TRIAL', 'ACTIVE', 'EXPIRED'] &&
+             data.memberLimit is int && data.memberLimit >= 1 && data.memberLimit <= 100000 &&
+             data.trialEndsAtMillis is int && data.trialEndsAtMillis >= 0 &&
+             data.requireGeofence is bool &&
+             data.requireDynamicQr is bool &&
+             data.requireSelfie is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidWorkspaceConfig(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.units is list && data.units.size() <= 50 &&
+             data.schedules is list && data.schedules.size() <= 30 &&
+             data.locations is list && data.locations.size() <= 20 &&
+             data.activeQrToken is string && data.activeQrToken.size() <= 128 &&
+             data.qrExpiresAtMillis is int && data.qrExpiresAtMillis >= 0 &&
+             data.qrLocationName is string && data.qrLocationName.size() <= 120 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidOrgMember(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             (!('parentUid' in data) || (data.parentUid is string && data.parentUid.size() <= 128)) &&
+             data.fullName is string && data.fullName.size() >= 1 && data.fullName.size() <= 100 &&
+             (!('email' in data) || (data.email is string && data.email.size() <= 160)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 30)) &&
+             data.memberCode is string && data.memberCode.size() >= 1 && data.memberCode.size() <= 40 &&
+             data.role in ['ORG_ADMIN', 'SUPERVISOR', 'MEMBER', 'PARENT'] &&
+             data.subType in ['STUDENT', 'TEACHER', 'EMPLOYEE', 'PARENT'] &&
+             (!('unitId' in data) || (data.unitId is string && data.unitId.size() <= 128)) &&
+             (!('unitName' in data) || (data.unitName is string && data.unitName.size() <= 120)) &&
+             (!('division' in data) || (data.division is string && data.division.size() <= 80)) &&
+             (!('scheduleId' in data) || (data.scheduleId is string && data.scheduleId.size() <= 128)) &&
+             (!('scheduleName' in data) || (data.scheduleName is string && data.scheduleName.size() <= 120)) &&
+             (!('joinCodeUsed' in data) || (data.joinCodeUsed is string && data.joinCodeUsed.size() <= 24)) &&
+             data.status in ['ACTIVE', 'INACTIVE'] &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAttendance(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             (!('parentUid' in data) || (data.parentUid is string && data.parentUid.size() <= 128)) &&
+             data.memberName is string && data.memberName.size() >= 1 && data.memberName.size() <= 100 &&
+             data.memberCode is string && data.memberCode.size() >= 1 && data.memberCode.size() <= 40 &&
+             (!('unitName' in data) || (data.unitName is string && data.unitName.size() <= 120)) &&
+             data.dateKey is string && data.dateKey.size() == 10 &&
+             data.checkInTimeText is string && data.checkInTimeText.size() >= 1 && data.checkInTimeText.size() <= 20 &&
+             (!('checkOutTimeText' in data) || (data.checkOutTimeText is string && data.checkOutTimeText.size() <= 20)) &&
+             data.checkInAt is timestamp && data.checkInAt <= request.time &&
+             (!('checkOutAt' in data) || (data.checkOutAt is timestamp && data.checkOutAt <= request.time)) &&
+             data.method in ['GPS', 'QR', 'SELFIE'] &&
+             (!('checkOutMethod' in data) || (data.checkOutMethod in ['GPS', 'QR', 'SELFIE'])) &&
+             (!('latitude' in data) || data.latitude is number) &&
+             (!('longitude' in data) || data.longitude is number) &&
+             data.distanceMeters is int && data.distanceMeters >= 0 && data.distanceMeters <= 10000000 &&
+             data.withinGeofence is bool &&
+             (!('qrTokenUsed' in data) || (data.qrTokenUsed is string && data.qrTokenUsed.size() <= 128)) &&
+             (!('selfiePath' in data) || (data.selfiePath is string && data.selfiePath.size() <= 300)) &&
+             data.faceConsentGranted is bool &&
+             data.status in ['HADIR', 'TERLAMBAT', 'IZIN', 'SAKIT', 'ALPHA'] &&
+             data.lateMinutes is int && data.lateMinutes >= 0 && data.lateMinutes <= 1440 &&
+             data.workMinutes is int && data.workMinutes >= 0 && data.workMinutes <= 1440 &&
+             data.overtimeMinutes is int && data.overtimeMinutes >= 0 && data.overtimeMinutes <= 1440 &&
+             data.deviceInfo is string && data.deviceInfo.size() >= 1 && data.deviceInfo.size() <= 160 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidLeaveRequest(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             data.memberName is string && data.memberName.size() >= 1 && data.memberName.size() <= 100 &&
+             (!('unitName' in data) || (data.unitName is string && data.unitName.size() <= 120)) &&
+             data.type in ['CUTI', 'SAKIT', 'IZIN', 'LEMBUR', 'KOREKSI'] &&
+             data.startDate is string && data.startDate.size() >= 1 && data.startDate.size() <= 30 &&
+             data.endDate is string && data.endDate.size() >= 1 && data.endDate.size() <= 30 &&
+             data.durationHours is int && data.durationHours >= 0 && data.durationHours <= 720 &&
+             data.reason is string && data.reason.size() >= 3 && data.reason.size() <= 500 &&
+             data.approvalStatus in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             (!('reviewedByUid' in data) || (data.reviewedByUid is string && data.reviewedByUid.size() <= 128)) &&
+             (!('reviewedByName' in data) || (data.reviewedByName is string && data.reviewedByName.size() <= 100)) &&
+             (!('reviewNote' in data) || (data.reviewNote is string && data.reviewNote.size() <= 300)) &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidNotification(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.targetUid is string && data.targetUid.size() >= 1 && data.targetUid.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.message is string && data.message.size() >= 1 && data.message.size() <= 400 &&
+             data.category in ['ATTENDANCE', 'LATE', 'LEAVE', 'PARENT', 'SYSTEM'] &&
+             data.readFlag is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidAuditLog(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.actorUid is string && data.actorUid.size() >= 1 && data.actorUid.size() <= 128 &&
+             data.actorName is string && data.actorName.size() >= 1 && data.actorName.size() <= 100 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             data.action is string && data.action.size() >= 1 && data.action.size() <= 100 &&
+             data.details is string && data.details.size() >= 1 && data.details.size() <= 400 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidSubscriptionPlan(data) {
+      return data.name is string && data.name.size() >= 1 && data.name.size() <= 60 &&
+             data.monthlyPriceIdr is int && data.monthlyPriceIdr >= 0 && data.monthlyPriceIdr <= 100000000 &&
+             data.maxUsers is int && data.maxUsers >= 1 && data.maxUsers <= 100000 &&
+             isBoundedStringList(data.features, 1, 12) &&
+             data.tierOrder is int && data.tierOrder >= 1 && data.tierOrder <= 10 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidTransaction(data) {
+      return data.organizationId is string && isValidId(data.organizationId) &&
+             data.organizationName is string && data.organizationName.size() >= 2 && data.organizationName.size() <= 120 &&
+             data.userId is string && data.userId.size() >= 1 && data.userId.size() <= 128 &&
+             isBoundedStringList(data.staffUids, 1, 20) &&
+             data.planId in ['FREE', 'STARTER', 'BUSINESS', 'PROFESSIONAL', 'ENTERPRISE'] &&
+             data.planName is string && data.planName.size() >= 1 && data.planName.size() <= 60 &&
+             data.amountIdr is int && data.amountIdr >= 0 && data.amountIdr <= 100000000 &&
+             data.status in ['PAID', 'PENDING', 'FAILED'] &&
+             data.invoiceNumber is string && data.invoiceNumber.size() >= 3 && data.invoiceNumber.size() <= 50 &&
+             data.paymentMethod is string && data.paymentMethod.size() >= 1 && data.paymentMethod.size() <= 60 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    // --- COLLECTION RULES ---
+
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId) && (request.auth.uid == userId || isBootstrappedSuperAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isBootstrappedSuperAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(userId) &&
+                       request.auth.uid == userId &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId', 'email', 'displayName', 'superAdmin', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'email', 'displayName', 'photoUrl', 'phone', 'activeOrganizationId', 'superAdmin', 'createdAt', 'updatedAt']) &&
+                       (incoming().superAdmin == false || isBootstrappedSuperAdmin()) &&
+                       isValidUserProfile(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(userId) &&
+                       isValidUserProfile(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       ((request.auth.uid == userId &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'phone', 'activeOrganizationId', 'updatedAt'])) ||
+                        (isBootstrappedSuperAdmin() &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoUrl', 'phone', 'activeOrganizationId', 'superAdmin', 'updatedAt'])));
+    }
+
+    match /org_join_codes/{joinCode} {
+      allow get: if isSignedIn() && isValidId(joinCode);
+      allow list: if isBootstrappedSuperAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(joinCode) &&
+                       incoming().ownerUid == request.auth.uid &&
+                       incoming().keys().hasAll(['organizationId', 'organizationName', 'organizationType', 'ownerUid', 'memberLimit', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['organizationId', 'organizationName', 'organizationType', 'ownerUid', 'memberLimit', 'createdAt', 'updatedAt']) &&
+                       isValidOrgJoinCode(incoming()) &&
+                       (existsAfter(/databases/$(database)/documents/organizations/$(incoming().organizationId)) ||
+                        isOrgAdmin(incoming().organizationId) ||
+                        isBootstrappedSuperAdmin());
+      allow update: if isSignedIn() &&
+                       isValidId(joinCode) &&
+                       isValidOrgJoinCode(incoming()) &&
+                       incoming().organizationId == existing().organizationId &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       (isOrgAdmin(existing().organizationId) || isBootstrappedSuperAdmin()) &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['organizationName', 'memberLimit', 'updatedAt']);
+      allow delete: if isSignedIn() && isValidId(joinCode) && (isOrgAdmin(existing().organizationId) || isBootstrappedSuperAdmin());
+    }
+
+    match /user_memberships/{membershipId} {
+      allow get: if isSignedIn() && isValidId(membershipId) &&
+                    (membershipId.matches('^' + request.auth.uid + '_.*') ||
+                     (resource != null && resource.data.userId == request.auth.uid) ||
+                     isBootstrappedSuperAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isBootstrappedSuperAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(membershipId) &&
+                       incoming().keys().hasAll(['userId', 'organizationId', 'organizationName', 'organizationType', 'role', 'memberCode', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['userId', 'organizationId', 'organizationName', 'organizationType', 'role', 'memberCode', 'createdAt', 'updatedAt']) &&
+                       isValidUserMembership(incoming()) &&
+                       ((incoming().userId == request.auth.uid &&
+                         existsAfter(/databases/$(database)/documents/organizations/$(incoming().organizationId)/members/$(request.auth.uid))) ||
+                        isOrgAdmin(incoming().organizationId) ||
+                        isBootstrappedSuperAdmin());
+      allow update: if isSignedIn() &&
+                       isValidId(membershipId) &&
+                       isValidUserMembership(incoming()) &&
+                       incoming().userId == existing().userId &&
+                       incoming().organizationId == existing().organizationId &&
+                       incoming().createdAt == existing().createdAt &&
+                       ((isOrgAdmin(existing().organizationId) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['organizationName', 'role', 'memberCode', 'updatedAt'])) ||
+                        (existing().userId == request.auth.uid &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['organizationName', 'updatedAt'])) ||
+                        isBootstrappedSuperAdmin());
+      allow delete: if isSignedIn() && isValidId(membershipId) && (isOrgAdmin(existing().organizationId) || isBootstrappedSuperAdmin());
+    }
+
+    match /organizations/{orgId} {
+      allow get: if isSignedIn() && isValidId(orgId) && (isOrgMember(orgId) || isBootstrappedSuperAdmin());
+      allow list: if isBootstrappedSuperAdmin();
+      allow create: if isSignedIn() &&
+                       isValidId(orgId) &&
+                       incoming().ownerUid == request.auth.uid &&
+                       (request.auth.uid in incoming().staffUids) &&
+                       incoming().keys().hasAll(['name', 'type', 'joinCode', 'address', 'phone', 'ownerUid', 'staffUids', 'subscriptionPlanId', 'subscriptionStatus', 'memberLimit', 'trialEndsAtMillis', 'requireGeofence', 'requireDynamicQr', 'requireSelfie', 'createdAt', 'updatedAt']) &&
+                       incoming().keys().hasOnly(['name', 'type', 'joinCode', 'address', 'phone', 'ownerUid', 'staffUids', 'subscriptionPlanId', 'subscriptionStatus', 'memberLimit', 'trialEndsAtMillis', 'requireGeofence', 'requireDynamicQr', 'requireSelfie', 'createdAt', 'updatedAt']) &&
+                       isValidOrganization(incoming());
+      allow update: if isSignedIn() &&
+                       isValidId(orgId) &&
+                       isValidOrganization(incoming()) &&
+                       incoming().ownerUid == existing().ownerUid &&
+                       incoming().createdAt == existing().createdAt &&
+                       ((isOrgAdmin(orgId) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['name', 'address', 'phone', 'staffUids', 'subscriptionPlanId', 'subscriptionStatus', 'memberLimit', 'trialEndsAtMillis', 'requireGeofence', 'requireDynamicQr', 'requireSelfie', 'updatedAt'])) ||
+                        isBootstrappedSuperAdmin());
+      allow delete: if isBootstrappedSuperAdmin();
+
+      match /workspace/{docId} {
+        allow get: if isSignedIn() && isValidId(docId) && (isOrgMember(orgId) || isBootstrappedSuperAdmin());
+        allow list: if isBootstrappedSuperAdmin();
+        allow create: if isSignedIn() &&
+                         isValidId(docId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().keys().hasAll(['organizationId', 'units', 'schedules', 'locations', 'activeQrToken', 'qrExpiresAtMillis', 'qrLocationName', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'units', 'schedules', 'locations', 'activeQrToken', 'qrExpiresAtMillis', 'qrLocationName', 'updatedAt']) &&
+                         isValidWorkspaceConfig(incoming()) &&
+                         ((existsAfter(/databases/$(database)/documents/organizations/$(orgId)) &&
+                           getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid) ||
+                          isOrgStaff(orgId) ||
+                          isBootstrappedSuperAdmin());
+        allow update: if isSignedIn() &&
+                         isValidId(docId) &&
+                         incoming().organizationId == existing().organizationId &&
+                         isValidWorkspaceConfig(incoming()) &&
+                         (isOrgStaff(orgId) || isBootstrappedSuperAdmin()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['units', 'schedules', 'locations', 'activeQrToken', 'qrExpiresAtMillis', 'qrLocationName', 'updatedAt']);
+      }
+
+      match /members/{memberId} {
+        allow get: if isSignedIn() && isValidId(memberId) && (isOrgMember(orgId) || isBootstrappedSuperAdmin());
+        allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || resource.data.parentUid == request.auth.uid || request.auth.uid in resource.data.staffUids || isBootstrappedSuperAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(memberId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().keys().hasAll(['organizationId', 'userId', 'staffUids', 'fullName', 'memberCode', 'role', 'subType', 'status', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'userId', 'staffUids', 'parentUid', 'fullName', 'email', 'phone', 'memberCode', 'role', 'subType', 'unitId', 'unitName', 'division', 'scheduleId', 'scheduleName', 'joinCodeUsed', 'status', 'createdAt', 'updatedAt']) &&
+                         isValidOrgMember(incoming()) &&
+                         ((isOrgAdmin(orgId)) ||
+                          (request.auth.uid == memberId &&
+                           incoming().userId == request.auth.uid &&
+                           incoming().role == 'ORG_ADMIN' &&
+                           existsAfter(/databases/$(database)/documents/organizations/$(orgId)) &&
+                           getAfter(/databases/$(database)/documents/organizations/$(orgId)).data.ownerUid == request.auth.uid) ||
+                          (request.auth.uid == memberId &&
+                           incoming().userId == request.auth.uid &&
+                           incoming().role in ['MEMBER', 'PARENT'] &&
+                           ('joinCodeUsed' in incoming()) &&
+                           exists(/databases/$(database)/documents/org_join_codes/$(incoming().joinCodeUsed)) &&
+                           get(/databases/$(database)/documents/org_join_codes/$(incoming().joinCodeUsed)).data.organizationId == orgId) ||
+                          isBootstrappedSuperAdmin());
+        allow update: if isSignedIn() &&
+                         isValidId(memberId) &&
+                         isValidOrgMember(incoming()) &&
+                         incoming().organizationId == existing().organizationId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         ((isOrgStaff(orgId) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'memberCode', 'role', 'subType', 'unitId', 'unitName', 'division', 'scheduleId', 'scheduleName', 'parentUid', 'staffUids', 'status', 'updatedAt'])) ||
+                          (existing().userId == request.auth.uid &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['fullName', 'phone', 'updatedAt'])) ||
+                          isBootstrappedSuperAdmin());
+        allow delete: if isSignedIn() && isValidId(memberId) && (isOrgAdmin(orgId) || isBootstrappedSuperAdmin());
+      }
+
+      match /attendances/{attendanceId} {
+        allow get: if isSignedIn() && isValidId(attendanceId) &&
+                      (resource.data.userId == request.auth.uid ||
+                       resource.data.parentUid == request.auth.uid ||
+                       request.auth.uid in resource.data.staffUids ||
+                       isBootstrappedSuperAdmin());
+        allow list: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid ||
+                        resource.data.parentUid == request.auth.uid ||
+                        request.auth.uid in resource.data.staffUids ||
+                        isBootstrappedSuperAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(attendanceId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().keys().hasAll(['organizationId', 'userId', 'staffUids', 'memberName', 'memberCode', 'dateKey', 'checkInTimeText', 'checkInAt', 'method', 'distanceMeters', 'withinGeofence', 'faceConsentGranted', 'status', 'lateMinutes', 'workMinutes', 'overtimeMinutes', 'deviceInfo', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'userId', 'staffUids', 'parentUid', 'memberName', 'memberCode', 'unitName', 'dateKey', 'checkInTimeText', 'checkOutTimeText', 'checkInAt', 'checkOutAt', 'method', 'checkOutMethod', 'latitude', 'longitude', 'distanceMeters', 'withinGeofence', 'qrTokenUsed', 'selfiePath', 'faceConsentGranted', 'status', 'lateMinutes', 'workMinutes', 'overtimeMinutes', 'deviceInfo', 'createdAt', 'updatedAt']) &&
+                         isValidAttendance(incoming()) &&
+                         ((incoming().userId == request.auth.uid && isOrgMember(orgId)) ||
+                          isOrgStaff(orgId) ||
+                          isBootstrappedSuperAdmin());
+        allow update: if isSignedIn() &&
+                         isValidId(attendanceId) &&
+                         isValidAttendance(incoming()) &&
+                         incoming().organizationId == existing().organizationId &&
+                         incoming().userId == existing().userId &&
+                         incoming().dateKey == existing().dateKey &&
+                         incoming().createdAt == existing().createdAt &&
+                         ((existing().userId == request.auth.uid &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['checkOutTimeText', 'checkOutAt', 'checkOutMethod', 'workMinutes', 'overtimeMinutes', 'updatedAt'])) ||
+                          (isOrgStaff(orgId) &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status', 'lateMinutes', 'workMinutes', 'overtimeMinutes', 'checkOutTimeText', 'checkOutAt', 'updatedAt'])) ||
+                          isBootstrappedSuperAdmin());
+      }
+
+      match /requests/{requestId} {
+        allow get: if isSignedIn() && isValidId(requestId) &&
+                      (resource.data.userId == request.auth.uid ||
+                       request.auth.uid in resource.data.staffUids ||
+                       isBootstrappedSuperAdmin());
+        allow list: if isSignedIn() &&
+                       (resource.data.userId == request.auth.uid ||
+                        request.auth.uid in resource.data.staffUids ||
+                        isBootstrappedSuperAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(requestId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().userId == request.auth.uid &&
+                         incoming().approvalStatus == 'PENDING' &&
+                         incoming().keys().hasAll(['organizationId', 'userId', 'staffUids', 'memberName', 'type', 'startDate', 'endDate', 'durationHours', 'reason', 'approvalStatus', 'createdAt', 'updatedAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'userId', 'staffUids', 'memberName', 'unitName', 'type', 'startDate', 'endDate', 'durationHours', 'reason', 'approvalStatus', 'reviewedByUid', 'reviewedByName', 'reviewNote', 'createdAt', 'updatedAt']) &&
+                         isValidLeaveRequest(incoming()) &&
+                         isOrgMember(orgId);
+        allow update: if isSignedIn() &&
+                         isValidId(requestId) &&
+                         isValidLeaveRequest(incoming()) &&
+                         incoming().organizationId == existing().organizationId &&
+                         incoming().userId == existing().userId &&
+                         incoming().createdAt == existing().createdAt &&
+                         ((existing().approvalStatus == 'PENDING' &&
+                           isOrgStaff(orgId) &&
+                           incoming().approvalStatus in ['APPROVED', 'REJECTED'] &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['approvalStatus', 'reviewedByUid', 'reviewedByName', 'reviewNote', 'updatedAt'])) ||
+                          isBootstrappedSuperAdmin());
+      }
+
+      match /notifications/{notificationId} {
+        allow get: if isSignedIn() && isValidId(notificationId) &&
+                      (resource.data.targetUid == request.auth.uid ||
+                       request.auth.uid in resource.data.staffUids ||
+                       isBootstrappedSuperAdmin());
+        allow list: if isSignedIn() &&
+                       (resource.data.targetUid == request.auth.uid ||
+                        request.auth.uid in resource.data.staffUids ||
+                        isBootstrappedSuperAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().keys().hasAll(['organizationId', 'targetUid', 'staffUids', 'title', 'message', 'category', 'readFlag', 'createdAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'targetUid', 'staffUids', 'title', 'message', 'category', 'readFlag', 'createdAt']) &&
+                         isValidNotification(incoming()) &&
+                         (isOrgMember(orgId) || isBootstrappedSuperAdmin());
+        allow update: if isSignedIn() &&
+                         isValidId(notificationId) &&
+                         isValidNotification(incoming()) &&
+                         incoming().organizationId == existing().organizationId &&
+                         incoming().targetUid == existing().targetUid &&
+                         incoming().createdAt == existing().createdAt &&
+                         (existing().targetUid == request.auth.uid || isBootstrappedSuperAdmin()) &&
+                         incoming().diff(existing()).affectedKeys().hasOnly(['readFlag']);
+      }
+
+      match /audit_logs/{logId} {
+        allow get: if isSignedIn() && isValidId(logId) &&
+                      (request.auth.uid in resource.data.staffUids || isBootstrappedSuperAdmin());
+        allow list: if isSignedIn() &&
+                       (request.auth.uid in resource.data.staffUids || isBootstrappedSuperAdmin());
+        allow create: if isSignedIn() &&
+                         isValidId(logId) &&
+                         incoming().organizationId == orgId &&
+                         incoming().actorUid == request.auth.uid &&
+                         incoming().keys().hasAll(['organizationId', 'actorUid', 'actorName', 'staffUids', 'action', 'details', 'createdAt']) &&
+                         incoming().keys().hasOnly(['organizationId', 'actorUid', 'actorName', 'staffUids', 'action', 'details', 'createdAt']) &&
+                         isValidAuditLog(incoming()) &&
+                         (isOrgMember(orgId) ||
+                          existsAfter(/databases/$(database)/documents/organizations/$(orgId)) ||
+                          isBootstrappedSuperAdmin());
+        allow update, delete: if false;
+      }
+    }
+
+    match /subscription_plans/{planId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isBootstrappedSuperAdmin() &&
+                               isValidId(planId) &&
+                               incoming().keys().hasAll(['name', 'monthlyPriceIdr', 'maxUsers', 'features', 'tierOrder', 'updatedAt']) &&
+                               incoming().keys().hasOnly(['name', 'monthlyPriceIdr', 'maxUsers', 'features', 'tierOrder', 'updatedAt']) &&
+                               isValidSubscriptionPlan(incoming());
+      allow delete: if false;
+    }
+
+    match /transactions/{transactionId} {
+      allow get: if isSignedIn() && isValidId(transactionId) &&
+                    (resource.data.userId == request.auth.uid ||
+                     request.auth.uid in resource.data.staffUids ||
+                     isBootstrappedSuperAdmin());
+      allow list: if isSignedIn() &&
+                     (resource.data.userId == request.auth.uid ||
+                      request.auth.uid in resource.data.staffUids ||
+                      isBootstrappedSuperAdmin());
+      allow create: if isSignedIn() &&
+                       isValidId(transactionId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['organizationId', 'organizationName', 'userId', 'staffUids', 'planId', 'planName', 'amountIdr', 'status', 'invoiceNumber', 'paymentMethod', 'createdAt']) &&
+                       incoming().keys().hasOnly(['organizationId', 'organizationName', 'userId', 'staffUids', 'planId', 'planName', 'amountIdr', 'status', 'invoiceNumber', 'paymentMethod', 'createdAt']) &&
+                       isValidTransaction(incoming()) &&
+                       (isOrgAdmin(incoming().organizationId) || isBootstrappedSuperAdmin());
+      allow update: if isBootstrappedSuperAdmin() &&
+                       isValidId(transactionId) &&
+                       isValidTransaction(incoming());
+    }
+  }
+}
